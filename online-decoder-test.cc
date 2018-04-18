@@ -23,6 +23,7 @@ void ReadData(const std::string& wav_rspecifier, int32 chunk_length_secs, int en
 		std::string utt = wav_reader.Key();
 		KALDI_LOG << "utterance id : " << utt;
 		const WaveData &wave_data = wav_reader.Value();
+		KALDI_LOG << "1";
 		// get the data for channel zero
 		SubVector<BaseFloat> data(wave_data.Data(), 0);
 		BaseFloat samp_freq = wave_data.SampFreq();
@@ -34,17 +35,20 @@ void ReadData(const std::string& wav_rspecifier, int32 chunk_length_secs, int en
 		else {
 			chunk_length = std::numeric_limits<int32>::max();
 		}
-
+    KALDI_LOG << "2";
 		int32 samp_offset = 0;
 		OnlineTimer decoding_timer(utt);
 		while (samp_offset < data.Dim())
 		{
 			int32 samp_remaining = data.Dim() - samp_offset;
 			int32 num_samp = chunk_length < samp_remaining ? chunk_length : samp_remaining;
-			short *pBuffer = new AudioBufferSource::SampleType(num_samp);
+			short *pBuffer = new short[num_samp];
+			KALDI_LOG << "3";
 			for (int32 i = 0; i < num_samp; ++i)
-				pBuffer[i] = data[pos + i];
-			AddBuffer(engineID, spkid, pBuffer, num_samp);
+				pBuffer[i] = data(samp_offset + i);
+		  KALDI_LOG << "4";
+			AddBuffer(engineID, utt.c_str(), pBuffer, num_samp);
+			KALDI_LOG << "5";
 			samp_offset += num_samp;
 			decoding_timer.WaitUntil(samp_offset / samp_freq);
 		}
@@ -54,7 +58,8 @@ void ReadData(const std::string& wav_rspecifier, int32 chunk_length_secs, int en
 int main(int argc, char *argv[]) {
   try {
     const char *usage = "online decoder test.\n"
-                        "online-decoder-test mandarin.conf test.wav\n";
+                        "online-decoder-test mandarin.conf "
+                        "\"ark,s,cs:../featbin/wav-copy scp,p:data/wav.scp ark:- |\"\n";
     ParseOptions po(usage);
     
     BaseFloat chunk_length_secs = 0.05;
@@ -65,15 +70,15 @@ int main(int argc, char *argv[]) {
     po.Read(argc, argv);            
     if (po.NumArgs() != 2) {
       po.PrintUsage();
-      return 1;
+      return 1; 
     }
     
     std::string conf_rxfilename = po.GetArg(1),
                 wav_rxfilename = po.GetArg(2);
                 
 	// create engine
-	int engineID = CreateRecognizer(conf_rxfilename);
-
+	int engineID = CreateRecognizer(conf_rxfilename.c_str());
+		
 	// add callbackfor FINAL_RESULT_SIGNAL
 	AddCallback(engineID, FINAL_RESULT_SIGNAL, OnSentence);
 
@@ -90,8 +95,9 @@ int main(int argc, char *argv[]) {
 		std::cout << "(2) resume recognizer";
 		std::cout << "(3) stop recognizer";
 		std::cout << ":";
-		c = getch();
-		switch (c)
+		char c[1] = "";
+		std::cin >> c;
+		switch (c[0])
 		{
 		case '1':
 			SuspendRecognizer(engineID);
@@ -103,7 +109,7 @@ int main(int argc, char *argv[]) {
 			StopRecognizer(engineID);
 			break;
 		}
-		if (c == '3')
+		if (c[0] == '3')
 			break;
 	}
 
