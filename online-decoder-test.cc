@@ -1,9 +1,11 @@
+// 张; 杨
 #include "onlinedecoder/audio-buffer-source.h"
 #include "onlinedecoder/online-decoder.h"
 #include "feat/wave-reader.h"
 #include <stdio.h>
 #include <thread>
 #include "onlinedecoder/speech-recognition-engine.h"
+
 
 using namespace kaldi;
 using namespace fst;
@@ -18,12 +20,13 @@ void OnSentence(const char* pszResults)
 
 void ReadData(const std::string& wav_rspecifier, int32 chunk_length_secs, int engineID)
 {
+  KALDI_LOG << wav_rspecifier;
 	SequentialTableReader<WaveHolder> wav_reader(wav_rspecifier);
 	for (; !wav_reader.Done(); wav_reader.Next()) {
 		std::string utt = wav_reader.Key();
 		KALDI_LOG << "utterance id : " << utt;
 		const WaveData &wave_data = wav_reader.Value();
-		KALDI_LOG << "1";
+
 		// get the data for channel zero
 		SubVector<BaseFloat> data(wave_data.Data(), 0);
 		BaseFloat samp_freq = wave_data.SampFreq();
@@ -35,7 +38,7 @@ void ReadData(const std::string& wav_rspecifier, int32 chunk_length_secs, int en
 		else {
 			chunk_length = std::numeric_limits<int32>::max();
 		}
-    KALDI_LOG << "2";
+
 		int32 samp_offset = 0;
 		OnlineTimer decoding_timer(utt);
 		while (samp_offset < data.Dim())
@@ -43,12 +46,12 @@ void ReadData(const std::string& wav_rspecifier, int32 chunk_length_secs, int en
 			int32 samp_remaining = data.Dim() - samp_offset;
 			int32 num_samp = chunk_length < samp_remaining ? chunk_length : samp_remaining;
 			short *pBuffer = new short[num_samp];
-			KALDI_LOG << "3";
+
 			for (int32 i = 0; i < num_samp; ++i)
 				pBuffer[i] = data(samp_offset + i);
-		  KALDI_LOG << "4";
+
 			AddBuffer(engineID, utt.c_str(), pBuffer, num_samp);
-			KALDI_LOG << "5";
+
 			samp_offset += num_samp;
 			decoding_timer.WaitUntil(samp_offset / samp_freq);
 		}
@@ -86,7 +89,7 @@ int main(int argc, char *argv[]) {
 	StartRecognizer(engineID);
 
 	// secondly, start the data thread
-	std::thread data_thread(ReadData, wav_rxfilename, 5, engineID);
+	std::thread *data_thread = new std::thread(ReadData, wav_rxfilename, chunk_length_secs, engineID);
 
 	// wait for user command
 	while (true)
@@ -103,6 +106,9 @@ int main(int argc, char *argv[]) {
 			SuspendRecognizer(engineID);
 			break;
 		case '2':
+		  data_thread->join();
+		  delete data_thread;
+		  data_thread = new std::thread(ReadData, wav_rxfilename, chunk_length_secs, engineID);
 			ResumeRecognizer(engineID);
 			break;
 		case '3':
@@ -115,10 +121,9 @@ int main(int argc, char *argv[]) {
 
 	// wait for the recognizing thread to stop
 	WaitForRecogStop(engineID);
-
 	// destroy the recognizer object
 	FreeRecognizer(engineID);
-
+	data_thread->join();
   } catch(const std::exception& e) {
     std::cerr << e.what();
     return -1;
